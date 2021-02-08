@@ -18,6 +18,162 @@
 #include <c10/util/Logging.h>
 #include <c10/util/python_stub.h>
 
+/*
+  ANN:
+  Summary of TensorImpl's API for better readability.
+  
+struct C10_API TensorImpl : public c10::intrusive_ptr_target {
+  TensorImpl() = delete;
+  TensorImpl(Storage&& storage, DispatchKeySet, const caffe2::TypeMeta& data_type);
+  TensorImpl(DispatchKeySet, const caffe2::TypeMeta& data_type, c10::optional<c10::Device> device_opt);
+  TensorImpl(Storage&& storage, DispatchKey dispatch_key, const caffe2::TypeMeta& data_type);
+  
+ private:
+  TensorImpl(Storage&& storage, DispatchKeySet, const caffe2::TypeMeta& data_type, c10::optional<c10::Device>);
+  
+ public:
+  TensorImpl(const TensorImpl&) = delete;
+  TensorImpl& operator=(const TensorImpl&) = delete;
+  TensorImpl(TensorImpl&&) = default;
+  TensorImpl& operator=(TensorImpl&&) = default;
+  virtual void release_resources() override;
+  DispatchKeySet key_set() const { return key_set_; }
+  virtual IntArrayRef sizes() const;
+  virtual IntArrayRef strides() const;
+  virtual int64_t dim() const;
+  virtual bool has_storage() const;
+  virtual const Storage& storage() const;
+  virtual int64_t numel() const { return numel_; }
+  bool unique_version() const { return version_counter_.unique(); } 
+  virtual bool is_contiguous(at::MemoryFormat memory_format=at::MemoryFormat::Contiguous) const;
+  bool is_sparse() const {return key_set_.has(DispatchKey::SparseCPU) || key_set_.has(DispatchKey::SparseCUDA) || key_set_.has(DispatchKey::SparseHIP); }
+  bool is_quantized() const {  return key_set_.has(DispatchKey::QuantizedCPU) || key_set_.has(DispatchKey::QuantizedCUDA); }
+  bool is_meta() const { return key_set_.has(DispatchKey::Meta); }
+  bool is_cuda() const { return key_set_.has(DispatchKey::CUDA) || key_set_.has(DispatchKey::SparseCUDA) || key_set_.has(DispatchKey::QuantizedCUDA); }
+  bool is_hip() const {  return key_set_.has(DispatchKey::HIP) || key_set_.has(DispatchKey::SparseHIP); }
+  bool is_mkldnn() const { return key_set_.has(DispatchKey::MkldnnCPU); }
+  bool is_vulkan() const { return key_set_.has(DispatchKey::Vulkan); }
+  int64_t get_device() const;
+  Device device() const ;
+  Layout layout() const ;
+  bool is_wrapped_number() const { return is_wrapped_number_; }
+  void set_wrapped_number(bool value) { TORCH_INTERNAL_ASSERT(dim() == 0); is_wrapped_number_ = value; }
+  inline bool support_as_strided() const { return device().type() != at::kXLA; }
+  void set_requires_grad(bool requires_grad);
+  bool requires_grad() const;
+  at::Tensor& grad();
+  const at::Tensor& grad() const;
+  template <typename T> inline T * data() const ;
+  inline void* data() const;
+  template <typename T> inline T * unsafe_data() const;
+  const caffe2::TypeMeta& dtype() const;
+  size_t itemsize() const ;
+  virtual int64_t storage_offset() const;
+  inline bool is_empty() const;
+  virtual void set_size(int64_t dim, int64_t new_size);
+  virtual void set_stride(int64_t dim, int64_t new_stride);
+  virtual void set_storage_offset(int64_t storage_offset);
+  void set_sizes_contiguous(IntArrayRef new_size);
+  void set_sizes_and_strides(IntArrayRef new_size, IntArrayRef new_stride);
+  virtual int64_t size(int64_t d) const;
+  virtual int64_t stride(int64_t d) const;
+  void set_allow_tensor_metadata_change(bool value);
+  bool allow_tensor_metadata_change() const;
+  void set_autograd_meta(std::unique_ptr<c10::AutogradMetaInterface> autograd_meta);
+  c10::AutogradMetaInterface* autograd_meta() const;
+  void set_named_tensor_meta(std::unique_ptr<c10::NamedTensorMetaInterface> named_tensor_meta);
+  const c10::NamedTensorMetaInterface* named_tensor_meta() const;
+  c10::NamedTensorMetaInterface* named_tensor_meta();
+  bool has_named_tensor_meta();
+  inline bool has_compatible_shallow_copy_type(DispatchKeySet from);
+  virtual c10::intrusive_ptr<TensorImpl> shallow_copy_and_detach(const c10::VariableVersion& version_counter, bool allow_tensor_metadata_change) const;
+  virtual void shallow_copy_from(const c10::intrusive_ptr<TensorImpl>& impl);
+  void set_version_counter(const c10::VariableVersion& version_counter) noexcept;
+  const c10::VariableVersion& version_counter() const noexcept;
+  void bump_version() noexcept;
+  inline void set_pyobj(PyObject* pyobj) noexcept;
+  inline PyObject* pyobj() const noexcept;
+
+ private:
+  c10::optional<c10::Device> device_opt() const;
+
+ public:
+  DeviceType device_type() const;
+  void Extend(int64_t num, float growthPct);
+  template <class T>
+  void ReserveSpace(const T& outer_dim);
+  template <typename... Ts>
+  void Resize(Ts... dim_source);
+  inline void Reshape(const std::vector<int64_t>& dims);
+  inline void FreeMemory();
+  void ShareData(const TensorImpl& src);
+  void ShareExternalPointer(DataPtr&& data_ptr, const caffe2::TypeMeta& data_type, size_t size_bytes);
+  inline void* raw_mutable_data(const caffe2::TypeMeta& meta);
+  template <typename T>
+  inline T* mutable_data();
+  bool storage_initialized() const;
+  bool dtype_initialized() const noexcept;
+  void set_storage_keep_dtype(at::Storage storage);
+  void set_storage_and_dtype(at::Storage storage, const caffe2::TypeMeta& data_type);
+  virtual void empty_tensor_restride(MemoryFormat memory_format);
+  bool is_strides_like_channels_last() const;
+  bool is_strides_like_channels_last_3d() const;
+  bool is_non_overlapping_and_dense() const;
+
+private:
+  template <typename T, typename = typename std::enable_if<std::is_integral<T>::value>::type>
+  bool SetDimsTemplate(ArrayRef<T> src);
+  bool SetDims(ArrayRef<int64_t> s);
+  bool SetDims(ArrayRef<int> s);
+  bool SetDims(ArrayRef<size_t> s);
+  bool SetDims();
+  bool SetDims(const int64_t d0);
+  bool SetDims(const int64_t d0, const int64_t d1);
+  bool SetDims(const int64_t d0, const int64_t d1, const int64_t d2);
+  bool SetDims(const int64_t d0, const int64_t d1, const int64_t d2, const int64_t d3);
+  int64_t compute_numel() const;
+  bool compute_contiguous() const;
+  bool compute_channels_last_contiguous_2d() const;
+  bool compute_channels_last_contiguous_3d() const;
+  bool compute_strides_like_channels_last_2d() const;
+  bool compute_strides_like_channels_last_3d() const;
+  bool compute_non_overlapping_and_dense() const;
+protected:
+  void refresh_numel();
+  void refresh_contiguous();
+  static void copy_tensor_metadata(const TensorImpl* src_impl, TensorImpl* dest_impl, const c10::VariableVersion& version_counter, bool allow_tensor_metadata_change);
+
+protected:
+  static const char * const err_msg_tensor_metadata_change_not_allowed;
+  Storage storage_;
+private:
+  std::unique_ptr<c10::AutogradMetaInterface> autograd_meta_ = nullptr;
+protected:
+  std::unique_ptr<c10::NamedTensorMetaInterface> named_tensor_meta_ = nullptr;
+  c10::VariableVersion version_counter_;
+  PyObject* pyobj_ = nullptr;
+  SmallVector<int64_t,5> sizes_;
+  SmallVector<int64_t,5> strides_;
+  int64_t storage_offset_ = 0;
+  int64_t numel_ = 1;
+  caffe2::TypeMeta data_type_;
+  c10::optional<c10::Device> device_opt_;
+  DispatchKeySet key_set_;
+  bool is_contiguous_ = true;
+  bool is_channels_last_ = false;
+  bool is_channels_last_contiguous_ = false;
+  bool is_channels_last_3d_ = false;
+  bool is_channels_last_3d_contiguous_ = false;
+  bool is_non_overlapping_and_dense_ = false;
+  bool is_wrapped_number_ = false;
+  bool allow_tensor_metadata_change_ = true;
+  bool reserved_ = false;
+};
+*/
+
+
+
+
 // A global boolean variable to control whether we free memory when a Tensor
 // is shrinked to a smaller size. As a result, a Tensor is always going to
 // keep the memory allocated for its maximum capacity reshaped to so far.
