@@ -5,6 +5,28 @@
 
 #include <c10/util/intrusive_ptr.h>
 
+/* ANN
+ Bring definition of DataPtr and Allocator:
+ DataPtr:
+  UniqueVoidPtr ptr_:
+   void* data_;
+   std::unique_ptr<void, DeleterFnPtr> ctx_;
+  Device device_;
+  
+ Allocator:
+  virtual DataPtr allocate(size_t n) const;
+  virtual DeleterFnPtr raw_deleter() const;
+  void* raw_allocate(size_t n);
+  void raw_deallocate(void* ptr);
+  
+ StorageImpl:
+  DataPtr data_ptr_;
+  size_t size_bytes_;
+  bool resizable_;
+  bool received_cuda_;
+  Allocator* allocator_;
+ */
+
 namespace c10 {
 
 struct C10_API StorageImpl final : public c10::intrusive_ptr_target {
